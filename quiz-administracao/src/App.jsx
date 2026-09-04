@@ -293,18 +293,39 @@ export default function App() {
     }
   };
 
+  const handleResetarRanking = async () => {
+    if (window.confirm("Tem certeza que deseja zerar a pontuação de TODOS os alunos no ranking?")) {
+      setLoading(true);
+      try {
+        const querySnapshot = await getDocs(collection(db, 'users'));
+        
+        const promessas = querySnapshot.docs.map((userDoc) => 
+          updateDoc(doc(db, 'users', userDoc.id), { pontuacaoGeral: 0 })
+        );
+
+        await Promise.all(promessas);
+
+        alert("Ranking resetado com sucesso!");
+        carregarRanking();
+        carregarDadosUsuario(user.uid);
+      } catch (err) {
+        alert("Erro ao resetar ranking: " + err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   // Prepara o bloco de até 10 questões com alternativas embaralhadas
   const prepararBlocoQuestoes = (listaOrigem, quantidade = 10) => {
     const embaralhadas = shuffleArray(listaOrigem).slice(0, quantidade);
     
     return embaralhadas.map((q) => {
-      // Mapeia texto original com o índice correto
       const altsComIndice = q.alternativas.map((texto, idx) => ({
         texto,
         isCorreta: idx === q.respostaCorreta
       }));
 
-      // Embaralha alternativas
       const altsEmbaralhadas = shuffleArray(altsComIndice);
       const novoIndexCorreto = altsEmbaralhadas.findIndex(a => a.isCorreta);
 
@@ -372,7 +393,6 @@ export default function App() {
       carregarDadosUsuario(user.uid);
       carregarRanking();
     } else {
-      // Registra a pergunta para o modo "Refazer Erradas"
       setPerguntasErradasSessao((prev) => [...prev, perguntaAtual]);
     }
   };
@@ -443,7 +463,6 @@ export default function App() {
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-4">
         <div className="w-full max-w-md bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 mt-6">
           
-          {/* Cabeçalho do Quiz com Botão de Sair */}
           <div className="flex justify-between items-center mb-3">
             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
               {perguntaAtual.disciplina}
@@ -670,6 +689,15 @@ export default function App() {
 
           {abaAtiva === 'admin' && userData.isAdmin && (
             <div>
+              {/* BOTÃO PARA RESETAR RANKING */}
+              <button 
+                onClick={handleResetarRanking}
+                disabled={loading}
+                className="w-full bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-semibold py-2.5 rounded-lg transition mb-6"
+              >
+                ⚠️ Resetar Pontuação de Todos os Alunos
+              </button>
+
               {/* IMPORTAÇÃO EM MASSA */}
               <div className="bg-slate-900 p-4 rounded-xl border border-indigo-500/30 mb-6">
                 <h4 className="text-xs font-bold text-indigo-300 mb-1 flex items-center gap-1">
