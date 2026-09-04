@@ -36,6 +36,16 @@ const AREAS_ADMINISTRACAO = [
   'Tecnologia e Ferramentas Administrativas'
 ];
 
+// Algoritmo Fisher-Yates para embaralhar listas
+const shuffleArray = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -51,6 +61,8 @@ export default function App() {
 
   // Quiz & Timer
   const [perguntas, setPerguntas] = useState([]);
+  const [perguntasSessao, setPerguntasSessao] = useState([]); // Bloco de até 10 perguntas embaralhadas
+  const [perguntasErradasSessao, setPerguntasErradasSessao] = useState([]); // Guarda as erradas para refazer
   const [disciplinaSelecionada, setDisciplinaSelecionada] = useState(null);
   const [indicePerguntaAtual, setIndicePerguntaAtual] = useState(0);
   const [opcaoSelecionada, setOpcaoSelecionada] = useState(null);
@@ -281,8 +293,39 @@ export default function App() {
     }
   };
 
+  // Prepara o bloco de até 10 questões com alternativas embaralhadas
+  const prepararBlocoQuestoes = (listaOrigem, quantidade = 10) => {
+    const embaralhadas = shuffleArray(listaOrigem).slice(0, quantidade);
+    
+    return embaralhadas.map((q) => {
+      // Mapeia texto original com o índice correto
+      const altsComIndice = q.alternativas.map((texto, idx) => ({
+        texto,
+        isCorreta: idx === q.respostaCorreta
+      }));
+
+      // Embaralha alternativas
+      const altsEmbaralhadas = shuffleArray(altsComIndice);
+      const novoIndexCorreto = altsEmbaralhadas.findIndex(a => a.isCorreta);
+
+      return {
+        ...q,
+        alternativas: altsEmbaralhadas.map(a => a.texto),
+        respostaCorreta: novoIndexCorreto
+      };
+    });
+  };
+
   const iniciarQuizPorDisciplina = (disc) => {
+    const filtradas = perguntas.filter(
+      (q) => disc === 'Todas' || q.disciplina === disc
+    );
+
+    const blocoPronto = prepararBlocoQuestoes(filtradas, 10);
+
     setDisciplinaSelecionada(disc);
+    setPerguntasSessao(blocoPronto);
+    setPerguntasErradasSessao([]);
     setIndicePerguntaAtual(0);
     setOpcaoSelecionada(null);
     setRespostaConfirmada(false);
@@ -291,17 +334,33 @@ export default function App() {
     setTempoRestante(TEMPO_LIMITE);
   };
 
-  const perguntasFiltradas = perguntas.filter(
-    (q) => disciplinaSelecionada === 'Todas' || q.disciplina === disciplinaSelecionada
-  );
+  const refazerQuestoesErradas = () => {
+    const blocoPronto = prepararBlocoQuestoes(perguntasErradasSessao, perguntasErradasSessao.length);
 
-  const perguntaAtual = perguntasFiltradas[indicePerguntaAtual];
+    setPerguntasSessao(blocoPronto);
+    setPerguntasErradasSessao([]);
+    setIndicePerguntaAtual(0);
+    setOpcaoSelecionada(null);
+    setRespostaConfirmada(false);
+    setQuizFinalizado(false);
+    setTempoRestante(TEMPO_LIMITE);
+  };
+
+  const sairDoQuiz = () => {
+    if (window.confirm("Deseja realmente sair do simulado? Seu progresso nesta sessão será encerrado.")) {
+      setDisciplinaSelecionada(null);
+      setQuizFinalizado(false);
+    }
+  };
+
+  const perguntaAtual = perguntasSessao[indicePerguntaAtual];
 
   const handleConfirmarResposta = async () => {
     if (opcaoSelecionada === null && tempoRestante > 0) return;
     setRespostaConfirmada(true);
 
     const acertou = opcaoSelecionada === perguntaAtual.respostaCorreta;
+    
     if (acertou && tempoRestante > 0) {
       const pontosGanhos = perguntaAtual.dificuldade === 'Difícil' ? 15 : perguntaAtual.dificuldade === 'Médio' ? 10 : 5;
       setPontosSessao((prev) => prev + pontosGanhos);
@@ -312,11 +371,14 @@ export default function App() {
       });
       carregarDadosUsuario(user.uid);
       carregarRanking();
+    } else {
+      // Registra a pergunta para o modo "Refazer Erradas"
+      setPerguntasErradasSessao((prev) => [...prev, perguntaAtual]);
     }
   };
 
   const handleProximaPergunta = () => {
-    if (indicePerguntaAtual + 1 < perguntasFiltradas.length) {
+    if (indicePerguntaAtual + 1 < perguntasSessao.length) {
       setIndicePerguntaAtual((prev) => prev + 1);
       setOpcaoSelecionada(null);
       setRespostaConfirmada(false);
@@ -328,7 +390,7 @@ export default function App() {
 
   // TELA DE QUIZ
   if (user && userData && disciplinaSelecionada) {
-    if (perguntasFiltradas.length === 0) {
+    if (perguntasSessao.length === 0) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6">
           <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 text-center max-w-md">
@@ -357,6 +419,15 @@ export default function App() {
               <span className="text-3xl font-black text-emerald-400">+{pontosSessao} pts</span>
             </div>
 
+            {perguntasErradasSessao.length > 0 && (
+              <button 
+                onClick={refazerQuestoesErradas}
+                className="w-full bg-amber-600 hover:bg-amber-500 text-white font-medium py-3 rounded-lg transition mb-3"
+              >
+                Refazer Apenas as Erradas ({perguntasErradasSessao.length})
+              </button>
+            )}
+
             <button 
               onClick={() => setDisciplinaSelecionada(null)}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-lg transition"
@@ -372,6 +443,7 @@ export default function App() {
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center p-4">
         <div className="w-full max-w-md bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700 mt-6">
           
+          {/* Cabeçalho do Quiz com Botão de Sair */}
           <div className="flex justify-between items-center mb-3">
             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
               {perguntaAtual.disciplina}
@@ -385,9 +457,17 @@ export default function App() {
               ⏱️ {tempoRestante}s
             </div>
 
-            <span className="text-xs text-slate-400">
-              {indicePerguntaAtual + 1} de {perguntasFiltradas.length}
-            </span>
+            <button
+              onClick={sairDoQuiz}
+              className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-lg hover:bg-red-500/30 transition"
+            >
+              🚪 Sair
+            </button>
+          </div>
+
+          <div className="flex justify-between text-xs text-slate-400 mb-2">
+            <span>Progresso</span>
+            <span>{indicePerguntaAtual + 1} de {perguntasSessao.length}</span>
           </div>
 
           <div className="w-full bg-slate-700 h-1.5 rounded-full mb-4 overflow-hidden">
@@ -466,7 +546,7 @@ export default function App() {
               onClick={handleProximaPergunta}
               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-lg transition"
             >
-              {indicePerguntaAtual + 1 < perguntasFiltradas.length ? 'Próxima Pergunta' : 'Ver Resultado'}
+              {indicePerguntaAtual + 1 < perguntasSessao.length ? 'Próxima Pergunta' : 'Ver Resultado'}
             </button>
           )}
 
